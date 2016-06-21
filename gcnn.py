@@ -19,6 +19,7 @@ class g_cnn(object):
         self.filter = np.random.randn(filter_count, size)*np.sqrt(2/50)  #TODO instead of 50 put fan-in     
         self.bias = np.random.randn(filter_count)        
         self.temp = np.zeros(size)
+        self.name = name
     
         self.init_weights()
     def init_weights(self):
@@ -35,7 +36,7 @@ class g_cnn(object):
                 if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
                 self.temp[i] += sum([G[item]['val'] for item in adj])                           #sum of neighbor's values
                 
-            G[node][name] = np.sum(self.temp * self.filter, axis = 1)
+            G[node][self.name] = np.sum(self.temp * self.filter, axis = 1)
                 
     
     def backprop(self, err):
