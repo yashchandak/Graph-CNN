@@ -13,24 +13,58 @@ class g_cnn(object):
     
     def __init__(self, name, inp_shape, out_shape, stride = 1, filter_count = 3, size = 3, fn = 'ReLu'):
         ##
-        self.stride = stride
+        self.stride = stride  #useless for time being
         self.filter_count = filter_count
         self.size = size
         self.filter = np.random.randn(filter_count, size)*np.sqrt(2/50)  #TODO instead of 50 put fan-in     
         self.bias = np.random.randn(filter_count)        
         self.temp = np.zeros(size)
         self.name = name
+        self.adj = [0]*size
     
         self.init_weights()
     def init_weights(self):
         ##
     
     def forward(self, G):
-        ##
+        nnodes = len(G.keys())
+        
+        self.idx_to_node = {i:j for i,j in enumerate(G.keys())}
+        self.node_to_idx = {j:i for i,j in enumerate(G.keys())}
+        
+        self.adj_mat = np.zeros((nnodes, nnodes)
+        for i in G.keys():
+            for j in G[i]['neighbors']:
+                self.adj_mat[node_to+idx[i]][node_to_idx[j]] = 1
+        
+        #k powers of adj matrix
+        #to find no.of paths between i,j of length 'level'
+        self.adj_mat_pow = np.array([np.identity(nnodes)])        
+        for level in range(1,size):
+            self.adj_mat_pow.append(self.adj_mat_pow[level-1].dot(self.adj_mat))
+        
+                #keep path at level K(p) only if K(q) == False, for all q < p
+        self.adj_mat_pow = self.adj_mat_pow.astype(bool)
+        for level in range(size -1, 0):
+            temp = np.zeros((nnodes,nnodes)).astype(bool)
+            for j in range(level-1, -1):
+                temp += self.adj_mat_pow[j]                
+            self.adj_mat_pow[level] &= np.invert(temp) # x = x&~y, output =1, only when x==1, and y==0
+        
+        self.adj_list = np.zeros(size)
+        for level in range(size):
+            self.adj_list[level] = [[j  for j in range(nnodes) \
+                                        if adj_mat_pow[level][i][j]]\
+                                        for i in range(nnodes)]
+                                            
+                    
+        
+        
+            
         
         for node in G.keys():
             self.temp.fill(0)
-            adj = [node]
+            adj[i] = [node]
             for i in range(self.size):
                 #TODO precompute neighbours at different levels
                 if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
