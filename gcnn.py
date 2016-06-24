@@ -21,17 +21,16 @@ class g_cnn(object):
         self.temp = np.zeros(size)
         self.name = name
         self.adj = [0]*size
-    
-        self.init_weights()
-    def init_weights(self):
-        print("TODO")
+        self.act = activation(fn)
     
     def forward(self, G):
         nnodes = len(G.keys())
         
+        #create dicts to map between actual and temporary node IDs
         self.idx_to_node = {i:j for i,j in enumerate(G.keys())}
         self.node_to_idx = {j:i for i,j in enumerate(G.keys())}
         
+        #create adjacency matrix
         self.adj_mat = np.zeros((nnodes, nnodes))
         for i in G.keys():
             for j in G[i]['neighbors']:
@@ -48,8 +47,10 @@ class g_cnn(object):
         for level in range(self.size -1, 0):
             temp = np.zeros((nnodes,nnodes)).astype(bool)
             for j in range(level-1, -1):
-                temp += self.adj_mat_pow[j]                
-            self.adj_mat_pow[level] &= np.invert(temp) # x = x&~y, output =1, only when x==1, and y==0
+                temp += self.adj_mat_pow[j] 
+                
+            # x = x&~y, output =1, only when x==1, and y==0
+            self.adj_mat_pow[level] &= np.invert(temp) 
         
         #create adj_list from the adj_matrix
         self.adj_list = np.zeros(self.size)
@@ -62,28 +63,30 @@ class g_cnn(object):
         #       find the values of neighbor
         #       these values are vectors of dim prv_size, corresponding to each prv filter
         #       sum over the values corresponding to same prv filter
-        #       resultant is temp[level][prv_size]
-        #       filter has 3 dim, [filter_no][level][prv_size]
         #
-        #       multiply filter and temp
-        #       sum over the axis of levels and prv_size
-        #       add bias
-        #       resulatant  = convolved value for that nodes for each filter
+        #   resultant is temp[level][prv_size]
+        #   filter has 3 dim, [filter_no][level][prv_size]
+        #
+        #   multiply filter and temp
+        #   sum over the axis of levels and prv_size
+        #   activate the sum and add bias
+        #   resulatant  = convolved value for that node for each filter
         for node in range(nnodes):
             self.temp = [np.sum([G[self.idx_to_node[idx]]['val'] \
                                  for idx in self.adj_list[level][node]], \
                         axis = 0) \
                         for level in range(self.size)] 
             
-            G[node]['conv'] = np.sum(self.temp * self.filter, axis(1,2)) + self.bias
+            G[node]['conv'] = self.act.activate(np.sum(self.temp * self.filter, axis(1,2)))\
+                              + self.bias
         
             
-        
+#       METHOD WITHOUT ADJ MATRIX COMPUTATON
+#       TODO: DOESNT TAKE INTO ACCOUNT ALL PRV CONVOLUTION LAYER
 #        for node in G.keys():
 #            self.temp.fill(0)
 #            adj[i] = [node]
 #            for i in range(self.size):
-#                #TODO precompute neighbours at different levels
 #                if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
 #                self.temp[i] += sum([G[item]['val'] for item in adj])                           #sum of neighbor's values
 #                
@@ -118,7 +121,7 @@ class activation(object):
     def __init__(self, fn ='ReLu'):
         self.fn = fn
         
-    def activate(self, inp, ):
+    def activate(self, inp):
         ##RelU and Sigmoid
     
     def derivative(self, inp):
