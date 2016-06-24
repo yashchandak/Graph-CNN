@@ -11,12 +11,12 @@ import networkx as nx
 
 class g_cnn(object):
     
-    def __init__(self, name, inp_shape, out_shape, stride = 1, filter_count = 3, size = 3, fn = 'ReLu'):
+    def __init__(self, name, inp_shape, out_shape, stride = 1, filter_count = 3, size = 3, prv_count = 1, fn = 'ReLu'):
         ##
         self.stride = stride  #useless for time being
         self.filter_count = filter_count
         self.size = size
-        self.filter = np.random.randn(filter_count, size)*np.sqrt(2/50)  #TODO instead of 50 put fan-in     
+        self.filter = np.random.randn(filter_count, size, prv_count)*np.sqrt(2/50)  #TODO instead of 50 put fan-in     
         self.bias = np.random.randn(filter_count)        
         self.temp = np.zeros(size)
         self.name = name
@@ -24,7 +24,7 @@ class g_cnn(object):
     
         self.init_weights()
     def init_weights(self):
-        ##
+        print("TODO")
     
     def forward(self, G):
         nnodes = len(G.keys())
@@ -32,45 +32,62 @@ class g_cnn(object):
         self.idx_to_node = {i:j for i,j in enumerate(G.keys())}
         self.node_to_idx = {j:i for i,j in enumerate(G.keys())}
         
-        self.adj_mat = np.zeros((nnodes, nnodes)
+        self.adj_mat = np.zeros((nnodes, nnodes))
         for i in G.keys():
             for j in G[i]['neighbors']:
-                self.adj_mat[node_to+idx[i]][node_to_idx[j]] = 1
+                self.adj_mat[node_to_idx[i]][node_to_idx[j]] = 1
         
         #k powers of adj matrix
         #to find no.of paths between i,j of length 'level'
         self.adj_mat_pow = np.array([np.identity(nnodes)])        
-        for level in range(1,size):
+        for level in range(1,self.size):
             self.adj_mat_pow.append(self.adj_mat_pow[level-1].dot(self.adj_mat))
         
-                #keep path at level K(p) only if K(q) == False, for all q < p
+        #keep path at level K(p) only if K(q) == False, for all q < p
         self.adj_mat_pow = self.adj_mat_pow.astype(bool)
-        for level in range(size -1, 0):
+        for level in range(self.size -1, 0):
             temp = np.zeros((nnodes,nnodes)).astype(bool)
             for j in range(level-1, -1):
                 temp += self.adj_mat_pow[j]                
             self.adj_mat_pow[level] &= np.invert(temp) # x = x&~y, output =1, only when x==1, and y==0
         
-        self.adj_list = np.zeros(size)
-        for level in range(size):
-            self.adj_list[level] = [[j  for j in range(nnodes) \
-                                        if adj_mat_pow[level][i][j]]\
+        #create adj_list from the adj_matrix
+        self.adj_list = np.zeros(self.size)
+        for level in range(self.size):
+            self.adj_list[level] = [[j  for j in range(nnodes) if adj_mat_pow[level][i][j]] \
                                         for i in range(nnodes)]
                                             
-                    
-        
+        #for each node
+        #   for neighbors at each level of the node
+        #       find the values of neighbor
+        #       these values are vectors of dim prv_size, corresponding to each prv filter
+        #       sum over the values corresponding to same prv filter
+        #       resultant is temp[level][prv_size]
+        #       filter has 3 dim, [filter_no][level][prv_size]
+        #
+        #       multiply filter and temp
+        #       sum over the axis of levels and prv_size
+        #       add bias
+        #       resulatant  = convolved value for that nodes for each filter
+        for node in range(nnodes):
+            self.temp = [np.sum([G[self.idx_to_node[idx]]['val'] \
+                                 for idx in self.adj_list[level][node]], \
+                        axis = 0) \
+                        for level in range(self.size)] 
+            
+            G[node]['conv'] = np.sum(self.temp * self.filter, axis(1,2)) + self.bias
         
             
         
-        for node in G.keys():
-            self.temp.fill(0)
-            adj[i] = [node]
-            for i in range(self.size):
-                #TODO precompute neighbours at different levels
-                if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
-                self.temp[i] += sum([G[item]['val'] for item in adj])                           #sum of neighbor's values
-                
-            G[node][self.name] = np.sum(self.temp * self.filter, axis = 1)
+#        for node in G.keys():
+#            self.temp.fill(0)
+#            adj[i] = [node]
+#            for i in range(self.size):
+#                #TODO precompute neighbours at different levels
+#                if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
+#                self.temp[i] += sum([G[item]['val'] for item in adj])                           #sum of neighbor's values
+#                
+#            G[node][self.name] = np.sum(self.temp * self.filter, axis = 1)
                 
     
     def backprop(self, err):
@@ -148,8 +165,8 @@ def load():
 
 
 def train():    
-    net = [g_cnn(name = 'G1'), g_pool(), \
-           g_cnn(name = 'G2'), g_pool(), \
+    net = [g_cnn(name = 'G1', filter_count = 4), g_pool(), \
+           g_cnn(name = 'G2', filter_count = 8, prv_count = 4), g_pool(), \
            fc_nn(nodes = 256), \
            fc_nn(nodes =512, dropout = True), \
            fc_nn(nodes = class_count, fn="softmax") ]
