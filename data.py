@@ -17,6 +17,20 @@ from networkx_viewer import Viewer
 path = '/home/yash/Project/Graph-CNN/Data/'
 #dataset = ['mutag.graph', 'ptc.graph', 'enzymes.graph', 'proteins.graph', 'nci1.graph', 'nci109.graph', 'collab.graph', 'imdb_action_romance.graph', 'reddit_iama_askreddit_atheism_trollx.graph', 'reddit_multi_5K.graph', 'reddit_subreddit_10K.graph']
 dataset = ['reddit_multi_5K.graph']#'imdb_comedy_romance_scifi.graph']
+
+
+        
+class Data(object):
+    def __init__(self, path):
+        ##something
+        self.has_more = True
+        self.read_data(path)
+        
+    def read_data(path):
+        
+    def next_batch(self):
+        ##something    
+
 def load_data(ds_name):
     f = open(ds_name, "rb")
     data = pickle.load(f, encoding='latin1')
