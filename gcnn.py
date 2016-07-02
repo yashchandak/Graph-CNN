@@ -3,10 +3,15 @@
 Created on Sat Jun 11 20:58:07 2016
 
 @author: yash
+
+TODO
+[1] : Try keeping only single object of graph and appending additional values at each layer
+[2] : Visualise the pooling result at each layer, I'm afraid it might get all disjoint or clique
 """
 from __future__ import print_function, 
 import numpy as np
 import networkx as nx
+from heapq import nlargest
 
 
 class g_cnn(object):
@@ -38,7 +43,7 @@ class g_cnn(object):
         nnodes = len(G.keys())
         
         #create dicts to map between actual and temporary node IDs
-        self.idx_to_node = {i:j for i,j in enumerate(G.keys())}
+        self.idx_to_node = [node for node in G.keys()]#{i:j for i,j in enumerate(G.keys())}
         self.node_to_idx = {j:i for i,j in enumerate(G.keys())}
         
         #create adjacency matrix
@@ -79,7 +84,7 @@ class g_cnn(object):
         #   filter has 3 dim, [filter_no][level][prv_size]
         #
         #   multiply filter and temp
-        #   sum over the axis of both levels and prv_size
+        #   sum over the axis of both: levels and prv_size
         #   activate the sum added with bias
         #   resulatant  = convolved value for that node for each filter
         for node in range(nnodes):
@@ -130,7 +135,7 @@ class g_cnn(object):
         
         rate = self.alpha*np.sqrt(1 - self.beta2t)/(1 - self.beta1t)
         self.filter -= rate*self.m/(np.sqrt(self.v) + self.eps)
-        self.bias   -= self.alpha*self.bias_del  #(duh) simple SGD update for bias :P
+        self.bias   -= self.alpha*self.bias_del  #(duh..) simple SGD update for bias :P
         
         #reset all deltas
         self.filter_del.fill(0)
@@ -138,20 +143,50 @@ class g_cnn(object):
 
 class g_pool(object):
     #TODO check: downsampling is happening after activation but upsampling is done after derivative
-    #idealy upsample should be done before computing derivatives (in case of avg pool)
+    #idealy, upsample should be done before computing derivatives (in case of avg pool)
     #in case of Max_pool, it's the same either way.
-    def __init__(self, flat = False, switch = False):
+    
+    def __init__(self, ratio = 4, flat = False, switch = False):
         ##book-keeping variable for backprop error
-    
-    def upsample(self):
-        ##
-    
-    def downsample(self):
-        ##create graph with new reduced nodes and edges
-    
-    def top_k(G, k=200):
-        #return top 200 nodes
+        self.flat = flat
+        self.ratio = ratio
         
+    def upsample(self, G):
+        for node in G.keys():
+            nb = self.G_old[node]['neighbors']
+            for n in nb:
+                #sum up fraction of errors as it may have been neighbor to more than one pooled node.
+                self.G_old[n]['delta'] += G[node]['error']/len(nb)
+                
+        
+    
+    def downsample(self, G):
+        """
+        For smplicity, trying to maintain a single graph structure for new Graph, 
+        hence individual values from each filter can't be used to sample (like in images)
+        since resultant of that can't be stacked up because
+        of differnet structures that might arise from pooling each conv filter separately
+        """
+        self.G_old = G
+        ##[Method 1] Simplest way
+        self.keep_count = len(G.keys())//self.ratio
+        #TODO: try using max
+        nodes = self.top_k(G, self.keep_count)
+        del_len = len(G[nodes[0]]['conv'])
+        G_new = {}
+        for node in nodes:
+            G_new[node] = {}
+            #new neighbors = only prv neighbors who passed pooling step
+            G_new[node]['neighbors'] = [n for n in G[node]['neighbors'] if n in nodes] #list(set(G[node]['neighbors']) & set(nodes))
+            #val = mean of its neighbor's and itself's values            
+            G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']].append(G[node]['conv']), axis=0)
+            #create dummy space to accumulate deltas later
+            G_new[node]['delta'] = np.zeros(del_len)
+        return G_new
+    
+    def top_k(self, G, k=200):
+        #return top k nodes
+        return nlargest(k, G.keys(), key = lambda e: np.mean(G[e]['conv']))
 
 
 class activation(object):
@@ -241,7 +276,7 @@ def train(load_path = False):
             
         if i % checkpoint == 0:
             valid_error = fwd_pass(net, data.training)
-            save()
+            save(net)
             
 
 train()
