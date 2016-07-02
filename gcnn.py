@@ -146,20 +146,27 @@ class g_pool(object):
     #idealy, upsample should be done before computing derivatives (in case of avg pool)
     #in case of Max_pool, it's the same either way.
     
-    def __init__(self, ratio = 4, flat = False, switch = False):
+    def __init__(self, ratio = 4, flat = False):
         ##book-keeping variable for backprop error
         self.flat = flat
         self.ratio = ratio
         
     def upsample(self, G):
+        """
+        Upsample the error from the Graph at layer (l+1)
+        to the graph at layer (l)        
+        """
+        if self.flat:
+            G = self.unflatten(G)
+            
         for node in G.keys():
             nb = self.G_old[node]['neighbors']
+            err = G[node]['error']/len(nb)
             for n in nb:
                 #sum up fraction of errors as it may have been neighbor to more than one pooled node.
-                self.G_old[n]['delta'] += G[node]['error']/len(nb)
+                self.G_old[n]['delta'] += err
                 
         
-    
     def downsample(self, G):
         """
         For smplicity, trying to maintain a single graph structure for new Graph, 
@@ -172,7 +179,7 @@ class g_pool(object):
         self.keep_count = len(G.keys())//self.ratio
         #TODO: try using max
         nodes = self.top_k(G, self.keep_count)
-        del_len = len(G[nodes[0]]['conv'])
+        self.val_len = len(G[nodes[0]]['conv'])
         G_new = {}
         for node in nodes:
             G_new[node] = {}
@@ -181,13 +188,49 @@ class g_pool(object):
             #val = mean of its neighbor's and itself's values            
             G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']].append(G[node]['conv']), axis=0)
             #create dummy space to accumulate deltas later
-            G_new[node]['delta'] = np.zeros(del_len)
+            G_new[node]['delta'] = np.zeros(self.val_len)
+            
+        if self.flat:
+            return self.flatten(G_new)
+            
         return G_new
     
     def top_k(self, G, k=200):
         #return top k nodes
         return nlargest(k, G.keys(), key = lambda e: np.mean(G[e]['conv']))
-
+        
+    def flatten(self, G):
+        """
+        make the graph flat based on centrality (anything better?) so that 
+        fully connected nets can take it as an input
+        
+        centrality can be useful in tranferring values 
+        in the apx labeling invariant way        
+        """
+        adj_list = {}
+        for k, v in G.items():
+            adj_list[k] = v['neighbors']
+        
+        #compute the centrality of each node
+        central = nx.betweenness_centrality(nx.Graph(adj_list)).items()
+        #compute node ordering based on centrality
+        self.ranking = sorted(central, key = lambda item: item[1], reverse = True)
+        
+        #concatenate all the filter values of nodes in order of their ranking
+        vec = [G[node[0]]['val'] for node in self.ranking]
+        return np.reshape(vec, -1)
+        
+    def un_flatten(self, vec)
+        """
+        convert the linear error vector coming from 
+        fully connected nets into graph structure
+        """
+        vec = np.reshape(vec, (-1, self.val_len))        
+        G = {}
+        for idx, node in enumerate(self.ranking):
+            G[node[0]] = {'error' : vec[idx]}
+            
+        return G
 
 class activation(object):
     #TODO make this super class for all classes implementing any type of layer

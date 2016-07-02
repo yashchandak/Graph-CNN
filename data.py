@@ -53,7 +53,7 @@ def most_important(G):
      print("Calculated ranks...")
      r = [x[1] for x in ranking]
      m = sum(r)/len(r) # mean centrality
-     t = m*2 # threshold, we keep only the nodes with 3 times the mean
+     t = m*3 # threshold, we keep only the nodes with 3 times the mean
      Gt = G.copy()
      for k, v in ranking:
           if v < t:
