@@ -242,21 +242,39 @@ class activation(object):
         #clip the outputs, since size of receptive field can vary a lot
         ##RelU/Sigmoid/Softmax
         if self.fn == 'ReLu':
+            return np.array([max(0.01, item) for item in z])
             
         elif self.fn == 'Sigmoid':
+            return 1/(1+e**-inp)
             
         elif self.fn == 'Softmax':
+            temp =  e**inp
+            return temp/np.sum(temp)
             
         elif self.fn == 'Tanh':
+            return (1-e**(-2*inp))/(1+e**(-2*inp))
             
         else:
-            print("Invalid activation function... exiting")
-            exit(0)
+            raise ValueError("Invalid activation function... exiting")
         
     
     def derivative(self, inp):
-        ##ReLu/Sigmoid/Softmax
-
+        if self.fn == 'ReLu':
+            return np.array([1 if item>0.01 else 0.01 for item in inp])
+            
+        elif self.fn == 'Sigmoid':
+            return inp*(1-inp)
+            
+        elif self.fn == 'Softmax':
+            #hard coded for log likelihood loss
+            #TODO: generic            
+            return 1
+            
+        elif self.fn == 'Tanh':
+            return 1-(inp**2)
+            
+        else:
+            raise ValueError("Invalid activation function... exiting")
 
 class Data(object):
     def __init__(self, path):
