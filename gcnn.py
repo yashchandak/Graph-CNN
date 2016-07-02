@@ -7,6 +7,7 @@ Created on Sat Jun 11 20:58:07 2016
 TODO
 [1] : Try keeping only single object of graph and appending additional values at each layer
 [2] : Visualise the pooling result at each layer, I'm afraid it might get all disjoint or clique
+[3] : add batch input support
 """
 from __future__ import print_function, 
 import numpy as np
@@ -100,8 +101,10 @@ class g_cnn(object):
 
     def backprop(self, G):
         #for each node, use its 'delta' provided by the pooling layer and computes 'error'
-
-        #calculate actual error for the nodes        
+        
+        for node in G.keys():
+            G[node]['delta'] = self.act.derivative(G[node]['conv'])*G[node]['delta']
+               
         #backprop convolution similar to fwd convolution 
         #since filters are independent of orientation, no flipping is required
         #instead of 'val'  we use 'delta' 
@@ -113,8 +116,8 @@ class g_cnn(object):
                         for level in range(self.size)] 
             
             #transpose the filter to go back to dimension of 'prv_count'
-            G[self.idx_to_node[node]]['error'] = self.act.derivative(G[self.idx_to_node[node]]['val'])\
-                                                 *np.sum(self.temp * self.filter.T, axis(1,2))  
+            #calculate actual error for the nodes 
+            G[self.idx_to_node[node]]['error'] = np.sum(self.temp * self.filter.T, axis(1,2))  
             
             #calculate deltas for filter
             self.filter_del += G[self.idx_to_node[node]]['val']*self.temp
@@ -123,7 +126,7 @@ class g_cnn(object):
         
         return G
         
-    def update(self, batch_size):
+    def update(self, batch_size = 1):
         #Adam weight update
         self.filter_del /= batch_size
         self.bias_del   /= batch_size
@@ -142,9 +145,6 @@ class g_cnn(object):
 
 
 class g_pool(object):
-    #TODO check: downsampling is happening after activation but upsampling is done after derivative
-    #idealy, upsample should be done before computing derivatives (in case of avg pool)
-    #in case of Max_pool, it's the same either way.
     
     def __init__(self, ratio = 4, flat = False):
         ##book-keeping variable for backprop error
@@ -220,7 +220,7 @@ class g_pool(object):
         vec = [G[node[0]]['val'] for node in self.ranking]
         return np.reshape(vec, -1)
         
-    def un_flatten(self, vec)
+    def un_flatten(self, vec):
         """
         convert the linear error vector coming from 
         fully connected nets into graph structure
@@ -232,14 +232,27 @@ class g_pool(object):
             
         return G
 
+
 class activation(object):
     #TODO make this super class for all classes implementing any type of layer
     def __init__(self, fn ='ReLu'):
         self.fn = fn
-        
+            
     def activate(self, inp):
         #clip the outputs, since size of receptive field can vary a lot
         ##RelU/Sigmoid/Softmax
+        if self.fn == 'ReLu':
+            
+        elif self.fn == 'Sigmoid':
+            
+        elif self.fn == 'Softmax':
+            
+        elif self.fn == 'Tanh':
+            
+        else:
+            print("Invalid activation function... exiting")
+            exit(0)
+        
     
     def derivative(self, inp):
         ##ReLu/Sigmoid/Softmax
@@ -258,19 +271,60 @@ class Data(object):
 
 
 class fc_nn(object):
-    def __init__(self, nodes, fn='ReLu', dropout = False):
+    def __init__(self, nodes, prv, fn='ReLu', dropout = 1):
+        #TODO:add delta accumulator
+        self.synapses = np.random.randn(nodes, prv)*(2.0/np.sqrt(prv)) 
+        self.synapses_del = np.zeros(self.synapses.shape)
+        self.bias     = np.random.random((nodes))*0.1 
+        self.bias_del = np.zeros(self.bias.shape)
+        self.act      = activation(fn)
+        
+        #Adam weight update variables
+        self.m      = 0
+        self.v      = 0
+        self.beta1  = 0.9
+        self.beta1t = 1
+        self.beta2  = 0.999
+        self.beta2t = 1
+        self.alpha  = 0.001
+        self.eps    = 1e-8    
+        
+    def forward(self, inp):
+        #TODO:assert input dimensions
+        self.inp = inp
+        
+        if self.dropout != 1:
+            mask = (np.random.rand(self.inp.shape) < dropout) / dropout 
+            self.inp *= mask 
+            
+        self.out = self.act.activate(self.synapse.dot(self.inp) + self.bias) 
+        return self.out
+    
+    def backprop(self, error):
         ##
+        self.error = self.act.derivative(self.out)*error
+        self.synapse_del += self.error.reshape(nodes,1)*self.inp
+        return self.synapse.T.dot(self.error)
+        #return self.act.derivative(self.inp)*self.synapse.T.dot(error)
+        
+    def update(self, batch_size):
+        #ADAM update
+        self.synapses_del /= batch_szie
+        self.bias_del     /= batch_size
+        
+        self.beta1t *= self.beta1
+        self.beta2t *= self.beta2
+        self.m = self.beta1*self.m + (1 - self.beta1)*self.synapses_del
+        self.v = self.beta2*self.v + (1 - self.beta2)*(self.synapses_del**2)
+        
+        rate = self.alpha*np.sqrt(1 - self.beta2t)/(1 - self.beta1t)
+        self.synapses   -= rate*self.m/(np.sqrt(self.v) + self.eps)
+        self.bias       -= self.alpha*self.bias_del  #(duh..) simple SGD update for bias :P
+        
+        #reset all deltas after update
+        self.synapses_del.fill(0)
+        
     
-    def forward(self):
-        ##check if input is flat, otherwise reshape
-    
-    
-    def backprop(self):
-        ##
-    
-    def update(self):
-        ##
-
 
 def fwd_pass(net):
     #do one complete fwd pass
@@ -290,8 +344,12 @@ def save():
 def load():
     ##
 
+def sampling():
+    ##
 
-def train(load_path = False):
+def train(save_path = '', load_path = False):
+    class_count = 10
+    
     if load_path:
         net = load(load_path)
     else:
@@ -319,7 +377,7 @@ def train(load_path = False):
             
         if i % checkpoint == 0:
             valid_error = fwd_pass(net, data.training)
-            save(net)
+            save(net, save_path)
             
 
 train()
