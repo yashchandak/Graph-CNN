@@ -3,6 +3,10 @@
 Created on Sat Jun 11 21:26:09 2016
 
 @author: yash
+
+TODO:
+
+[1] : design a checking methodology to evaliate sampling algorithms
 """
 
 from __future__ import print_function
@@ -11,7 +15,8 @@ import pickle
 from collections import Counter
 import numpy as np
 import networkx as nx
-from pylab import show
+import matplotlib.pyplot as plt
+
 from networkx_viewer import Viewer
 import random
 import itertools
@@ -43,59 +48,47 @@ def load_data(ds_name):
 
 
 def create_adj_list(graph):
+    print("Started creating adj_list...")
     adj_list = {}
     for k, v in graph.items():
         adj_list[k] = v['neighbors']
         
+    print("Done")
     return adj_list
 
-def sampling(G, k):
+def sampling(G, size, **args):   
+    node_count = len(G.keys())
+        
+    if size > node_count:
+        #add dummy nodes
+        for i in range(node_count, size):
+            G[i] = {'neighbors':[]}
+    
+    elif size <  node_count:        
+        selected = random_walk(G, size, args)
+        G = subgraph(G, selected)
+        
+    #assign values to each node
+    # a) default, 1
+    # b) based on label
+    # c) normalised degree
+    for v in G.keys():
+        G[v]['val'] = [1] #default
+        
+    return G
+
+
+def subgraph(G, selected):
+    G_new = {}
+    for node, _ in selected:
+        neighbors = [v for v in G[node]['neighbors'] if selected.get(v, 0)!=0]
+        G_new[node] = {'neighbors':neighbors}        
+    return G_new
+    
+    
+def random_walk(G, size, seeds=20, start_node=None,  metropolized=True, **args):
     #TODO: disconnectednss can be a problem here, visualise the generate graph to fine tune algo
-    nodes = G.keys()   
-    if nodes==k:
-        return G
-    
-    if nodes<k:
-        print("TODO: add 0 value nodes if total no. of nodes is less than K")
-        return G
-    
-    #do random walk to subsample graph
-    prob = k/nodes
-    v = np.random.choice(nodes)
-    count = 0
-    selected = {}
-    while count < k:
-        print ("TODO")
-        
-def random_walk1(graph, start_node=None, size=-1, metropolized=False):    
-    """
-    random_walk(G, start_node=None, size=-1):
-    
-    Generates nodes sampled by a random walk (classic or metropolized)
-    
-    Parameters
-    ----------  
-    graph:        - networkx.Graph 
-    start_node    - starting node (if None, then chosen uniformly at random)
-    size          - desired sample length (int). If -1 (default), then the generator never stops
-    metropolized  - False (default): classic Random Walk
-                    True:  Metropolis Hastings Random Walk (with the uniform target node distribution) 
-    """        
-    if start_node==None:
-        start_node = random.choice(graph.nodes())
-    
-    v = start_node
-    for c in itertools.count():
-        if c==size:  return
-        if metropolized:   # Metropolis Hastings Random Walk (with the uniform target node distribution) 
-            candidate = random.choice(graph.neighbors(v))
-            v = candidate if (random.random() < float(graph.degree(v))/graph.degree(candidate)) else v
-        else:              # classic Random Walk
-            v = random.choice(graph.neighbors(v))
-            
-        yield v
-        
-def random_walk(G, size, seeds=1, start_node=None,  metropolized=False):
+       
     if start_node==None:
         start_node = np.random.choice(list(G.keys()), seeds)
         
@@ -105,27 +98,22 @@ def random_walk(G, size, seeds=1, start_node=None,  metropolized=False):
     
     while flag:
         for i in range(seeds):
-            try:
-                if metropolized:
-                    candidate = np.random.choice(graph[v[i]]['neighbors'])
-                    v[i] = candidate if (np.random.rand() < len(G[v[i]]['neighbors'])/len(G[candidate]['neighbors'])) \
-                                  else v[i] 
-                else:
-                    v[i] = np.random.choice(G[v]['neighbors'])
-                    
-                if selected.get(v[i], 0) == 0:
-                    selected[v[i]] = 1
-                    size -= 1
-                    if size == 0:
-                        flag = False
-                        break   
-            except KeyError:
-                print(i)
-                print(v[i])
-                print(v[i]['neighbors'])
-                print(candidate)
+            if metropolized:    # Metropolis Hastings Random Walk (with the uniform target node distribution) 
+                candidate = np.random.choice(G[v[i]]['neighbors'])
+                #v[i] = candidate if (np.random.rand() < len(G[v[i]]['neighbors'])/len(G[candidate]['neighbors'])) \
+                v[i] = candidate if (np.random.rand() < len(G[candidate]['neighbors']))/len(G[v[i]]['neighbors']) \
+                                 else v[i] 
+            else:               # classic Random Walk
+                v[i] = np.random.choice(G[v[i]]['neighbors'])
+                
+            if selected.get(v[i], 0) == 0:
+                selected[v[i]] = 1
+                size -= 1
+                if size == 0:
+                    flag = False
+                    break   
             
-    return list(selected.keys())
+    return selected.keys()
     
     
 def most_important(G):
@@ -144,23 +132,104 @@ def most_important(G):
      return Gt
 
    
-def disp(G):
+def disp(G, sd = 10, sz=512, m=True):
     s = time.time()
-    G = create_adj_list(G)
-    e = time.time()
+    G_nx = nx.Graph(create_adj_list(G))
+    e = time.time()    
     print("Calculated adj_list in:" , (e-s))
-    G = nx.Graph(G)
+    #G = nx.Graph(G)
     #G = most_important(G) 
-    G = random_walk(G, size = 30, metropolized = True )
+    Gr = random_walk(G, seeds =sd, size = sz, metropolized = m )    
     print("Calculated important in:" , (time.time()-e))
     
-    app = Viewer(G)
-    app.mainloop()    
+    e = time.time()
+    G_nx_sel = G_nx.subgraph(Gr)
+    print("Calculated subgraph in:" , (time.time()-e))
+    #app = Viewer(G)
+    #app.mainloop()    
     
-    #pos = nx.spectral_layout(G)
-    #nx.draw_networkx_nodes(G,pos,node_color='b',alpha=0.5,node_size=8)
-    #nx.draw_networkx_edges(G,pos,alpha=0.1)
-    #show()
+    pos = forceatlas2_layout(G_nx)
+    #pos = nx.random_layout(G_nx)
+    nx.draw_networkx_nodes(G_nx,pos,node_color='b',alpha=0.5,node_size=2)   
+    nx.draw_networkx_edges(G_nx,pos,alpha=0.1)
+    nx.draw_networkx_nodes(G_nx_sel,pos, node_color='r',alpha=0.5,node_size=20) 
+    
+    plt.plot(1)
+    plt.axis('off')
+    plt.show() 
+
+
+## Now the layout function
+def forceatlas2_layout(G, iterations=2, linlog=True, pos=None, nohubs=True,
+                       kr=0.00001, k=None, dim=2, min_dist = 1):
+    """
+    Options values are
+    g                The graph to layout
+    iterations       Number of iterations to do
+    linlog           Whether to use linear or log repulsion
+    random_init      Start with a random position
+                     If false, start with FR
+    avoidoverlap     Whether to avoid overlap of points
+    degreebased      Degree based repulsion
+    """
+    # We add attributes to store the current and previous convergence speed
+    for n in G:
+        G.node[n]['prevcs'] = 0
+        G.node[n]['currcs'] = 0
+        # To numpy matrix
+    # This comes from the sparse FR layout in nx
+    A = nx.to_scipy_sparse_matrix(G, dtype='f')
+    nnodes, _ = A.shape
+
+    try:
+        A = A.tolil()
+    except Exception as e:
+        print(e)
+        #A = (coo_matrix(A)).tolil()
+    if pos is None:
+        pos = np.asarray(np.random.random((nnodes, dim)), dtype=A.dtype)
+    else:
+        pos = pos.astype(A.dtype)
+    if k is None:
+        k = np.sqrt(1.0 / nnodes)
+        # Iterations
+    # the initial "temperature" is about .1 of domain area (=1x1)
+    # this is the largest step allowed in the dynamics.
+    t = 0.3
+    # simple cooling scheme.
+    # linearly step down by dt on each iteration so last iteration is size dt.
+    dt = t / float(iterations + 1)
+    displacement = np.zeros((dim, nnodes))
+    for iteration in range(iterations):
+        displacement *= 0
+        # loop over rows
+        for i in range(A.shape[0]):
+            # difference between this row's node position and all others
+            delta = (pos[i] - pos).T
+            # distance between points
+            distance = np.sqrt((delta ** 2).sum(axis=0))
+            # enforce minimum distance of 0.01
+            distance = np.where(distance < min_dist, min_dist, distance)
+            # the adjacency matrix row
+            Ai = np.asarray(A.getrowview(i).toarray())
+            # displacement "force"
+            Dist = k * k / distance ** 2
+            if nohubs:
+                Dist = Dist / float(Ai.sum(axis=1) + 1)
+            if linlog:
+                Dist = np.log(Dist + 1)
+            displacement[:, i] += \
+                (delta * (Dist - Ai * distance / k)).sum(axis=1)
+        
+        # update positions
+        length = np.sqrt((displacement ** 2).sum(axis=0))
+        length = np.where(length < min_dist, min_dist, length)
+        pos += (displacement * t / length).T
+        # cool temperature
+        t -= dt
+        # Return the layout
+    return dict(zip(G, pos))
+
 
 graph_set = []    
 for d in dataset:
@@ -174,3 +243,9 @@ for d in dataset:
     for gidx, graph in graph_set.items():
         node_count.append(len(graph))
     print ("Avg #nodes: %s Median #nodes: %s Max #nodes: %s Min #nodes: %s"%(np.mean(node_count), np.median(node_count), max(node_count), min(node_count)))
+
+
+for i in range( len(graph_set.keys())):
+    if i%500 != 0:
+        del graph_set[i]
+    

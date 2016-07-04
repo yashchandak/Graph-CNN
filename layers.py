@@ -3,6 +3,9 @@
 Created on Sun Jul  3 01:19:38 2016
 
 @author: yash
+
+TODO:
+[1] : add L2 regularisation
 """
 from __future__ import print_function 
 import numpy as np
