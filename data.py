@@ -29,6 +29,7 @@ dataset = ['reddit_multi_5K.graph']#'imdb_comedy_romance_scifi.graph']
 class Data(object):
     has_more = True
     counter = 0
+    val_size = 1 #size of the value assigned to each node initially
     def __init__(self, path, ratio = 0.9, batch_Size = 1):
         self.read_data(path)
         self.batch_size = batch_size
@@ -49,11 +50,13 @@ class Data(object):
         self.mean, self.median = np.mean(node_count), np.median(node_count)
         self.len, self.classes = len(self.graph_set), len(Counter(self.labels)) 
         
+        self.size = pow(2, int(np.log2(self.median))) #no.of vertices to keep from each graph
         self.shuffled          = np.arange(int(self.len*self.ratio))
         np.random.shuffle(self.shuffled)
         
         print ("Dataset: %s length: %s label distribution: %s"%(path, self.len, Counter(self.labels)))
         print ("Avg #nodes: %s Median #nodes: %s Max #nodes: %s Min #nodes: %s"%(self.mean, self.median, self.max, self.min))
+        print ("Sampling size: ", self.size)
         
     def load_data(self, path):
         f = open(path, "rb")
@@ -67,7 +70,7 @@ class Data(object):
         data = []
         for idx in range(self.batch_size):
             c = self.shuffled[self.counter]                     #get next value in the shuffled list
-            g = self.sampling(self.graph_set[c], self.median)   #sample the graph to a fixed vertex size graph
+            g = self.sampling(self.graph_set[c], self.size)   #sample the graph to a fixed vertex size graph
             
             #one-hot encoding
             truth = np.zeros(self.classes)
@@ -76,6 +79,7 @@ class Data(object):
             self.counter += 1
             if self.counter == int(self.ratio*self.len): 
                 self.counter = 0
+                self.has_more = False
                 print("Finished iterating over entire dataset, starting again...")
                 
             data.append((g,truth))
@@ -110,6 +114,7 @@ class Data(object):
         # a) default, 1
         # b) based on label of vertices?
         # c) normalised degree?
+        #change self.val_size accodingly
         for v in G.keys():
             G[v]['val'] = [1] #default
             
@@ -165,7 +170,6 @@ class Data(object):
             
         print("Done")
         return adj_list
-
 
 
 #######################################

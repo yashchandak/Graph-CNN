@@ -19,43 +19,49 @@ from data import Data
 from net import fwd_pass, train_step, update, save, load
 
 
-def sampling():
-    print("Sample representative graph form big graph")
-
 def train(save_path = '', load_path = False):
-    class_count = 10
+    db_path = '/home/yash/Project/dataset/GraphSimilarity/reddit_multi_5K.graph'
+    db = Data(db_path)
+    class_count = db.classes
+    inp_size    = db.val_size
     
     if load_path:
         net = load(load_path)
     else:
-        net = [g_cnn(filter_count = 4), g_pool(), \
-               g_cnn(filter_count = 8, prv_count = 4), g_pool(flat=True), \
-               fc_nn(nodes = 256), \
-               fc_nn(nodes = 512, dropout = True), \
-               fc_nn(nodes = class_count, fn="softmax") ]
+        net = [g_cnn(prv_count = inp_size, filter_count = 4), g_pool(), \
+               g_cnn(prv_count = 4,        filter_count = 8), g_pool(flat=True), \
+               fc_nn(prv = ((inp_size//2)//2)*8, nodes = 512), \
+               fc_nn(prv = 512, nodes = 256, dropout = True), \
+               fc_nn(prv = 256, nodes = class_count, fn="softmax") ]
           
-    epoch = 1500
-    checkpoint = 25
+    epoch = 100
+    checkpoint = 5
     batch_size = 1
     train_error = np.zeros(epoch)
     valid_error = np.zeros(epoch//checkpoint)
-    path = ""
-    data = Data(path = path, batch_size = batch_size )
     
     for i in range(epoch):
-        while(data.has_more):
+        while(db.has_more):
             
-            db = data.next_batch()
-            for d in db:
-                train_error[i] += train_step(net, d)                
+            data_batch = db.next_batch()
+            for d in data_batch:
+                e = train_step(net, d)
+                train_error[i] += np.sum(np.abs(e))     
+            
+            train_error[i] /= batch_size
             update(net, batch_size)
             
+        db.has_more = True
         if i % checkpoint == 0:
-            valid_error[i//checkpoint] = fwd_pass(net, data.training)
+            data_batch = db.get_test()
+            for d in data_batch:
+                e = fwd_pass(net, db.get_test())
+                valid_error[i//checkpoint] = np.sum(np.abs(e))
+            valid_error[i//checkpoint] /= len(data_batch)    
             save(net, save_path)
             
 
-train()
+train(save_path = '/home/yash/Project/Graph-CNN/logs/run1.net')
 
 
 

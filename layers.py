@@ -60,7 +60,7 @@ class activation(object):
             
 class g_cnn(object):
     
-    def __init__(self, inp_shape, out_shape, stride = 1, filter_count = 3, size = 3, prv_count = 1, fn = 'ReLu'):
+    def __init__(self,  prv_count = 1, stride = 1, filter_count = 4, size = 3, fn = 'ReLu'):
         #Layer variables
         self.stride         = stride  #not used, for time being
         self.filter_count   = filter_count
@@ -190,7 +190,7 @@ class g_cnn(object):
 
 class g_pool(object):
     
-    def __init__(self, ratio = 4, flat = False):
+    def __init__(self, ratio = 2, flat = False):
         ##book-keeping variable for backprop error
         self.flat = flat
         self.ratio = ratio
@@ -210,6 +210,7 @@ class g_pool(object):
                 #sum up fraction of errors as it may have been neighbor to more than one pooled node.
                 self.G_old[n]['delta'] += err
                 
+        return self.G_old
         
     def downsample(self, G):
         """
@@ -279,6 +280,12 @@ class g_pool(object):
 
 class fc_nn(object):
     def __init__(self, nodes, prv, fn='ReLu', dropout = 1):
+        """
+        nodes   = Nodes in this layer
+        prv     = Nodes in previous layers
+        fn      = Output activation function
+        dropout = Dropout probability ON THE INCOMING VECTOR
+        """
         #TODO:add delta accumulator
         self.nodes    = nodes
         self.dropout  = dropout
