@@ -6,6 +6,7 @@ Created on Sun Jul  3 01:19:38 2016
 
 TODO:
 [1] : add L2 regularisation
+[2] : in g_pool flattening, make centrality independent of nx
 """
 from __future__ import print_function 
 import numpy as np

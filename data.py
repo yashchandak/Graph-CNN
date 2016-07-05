@@ -25,101 +25,158 @@ path = '/home/yash/Project/dataset/GraphSimilarity/'
 #dataset = ['mutag.graph', 'ptc.graph', 'enzymes.graph', 'proteins.graph', 'nci1.graph', 'nci109.graph', 'collab.graph', 'imdb_action_romance.graph', 'reddit_iama_askreddit_atheism_trollx.graph', 'reddit_multi_5K.graph', 'reddit_subreddit_10K.graph']
 dataset = ['reddit_multi_5K.graph']#'imdb_comedy_romance_scifi.graph']
 
-
-#        
-#class Data(object):
-#    def __init__(self, path):
-#        ##something
-#        self.has_more = True
-#        self.read_data(path)
-#        
-#    def read_data(path):
-#        
-#    def next_batch(self):
-#        ##something    
-
-def load_data(ds_name):
-    f = open(ds_name, "rb")
-    data = pickle.load(f, encoding='latin1')
-    graph_data = data["graph"]
-    labels = data["labels"]
-    labels  = np.array(labels, dtype = np.float)
-    return graph_data, labels
-
-
-def create_adj_list(graph):
-    print("Started creating adj_list...")
-    adj_list = {}
-    for k, v in graph.items():
-        adj_list[k] = v['neighbors']
         
-    print("Done")
-    return adj_list
+class Data(object):
+    has_more = True
+    counter = 0
+    def __init__(self, path, ratio = 0.9, batch_Size = 1):
+        self.read_data(path)
+        self.batch_size = batch_size
+        self.ratio = ratio
+        
+    def read_data(self, path):
+        print ("Reading dataset ", path)
+        self.graph_set, self.labels = self.load_data(ds)
+        if d.split('/')[-1] == 'proteins.graph': #exception case
+            self.labels = self.labels[0]
+        
+        node_count = []
+        for gidx, graph in self.graph_set.items():
+            node_count.append(len(graph))
+        
+        #Data stats
+        self.min, self.max     = min(node_count), max(node_count)
+        self.mean, self.median = np.mean(node_count), np.median(node_count)
+        self.len, self.classes = len(self.graph_set), len(Counter(self.labels)) 
+        
+        self.shuffled          = np.arange(int(self.len*self.ratio))
+        np.random.shuffle(self.shuffled)
+        
+        print ("Dataset: %s length: %s label distribution: %s"%(path, self.len, Counter(self.labels)))
+        print ("Avg #nodes: %s Median #nodes: %s Max #nodes: %s Min #nodes: %s"%(self.mean, self.median, self.max, self.min))
+        
+    def load_data(self, path):
+        f = open(path, "rb")
+        data = pickle.load(f, encoding='latin1')
+        graph_data = data["graph"]
+        labels = data["labels"]
+        labels  = np.array(labels, dtype = np.float)
+        return graph_data, labels
 
-def sampling(G, size, **args):   
-    node_count = len(G.keys())
-        
-    if size > node_count:
-        #add dummy nodes
-        for i in range(node_count, size):
-            G[i] = {'neighbors':[]}
-    
-    elif size <  node_count:        
-        selected = random_walk(G, size, args)
-        G = subgraph(G, selected)
-        
-    #assign values to each node
-    # a) default, 1
-    # b) based on label
-    # c) normalised degree
-    for v in G.keys():
-        G[v]['val'] = [1] #default
-        
-    return G
-
-
-def subgraph(G, selected):
-    G_new = {}
-    for node, _ in selected:
-        neighbors = [v for v in G[node]['neighbors'] if selected.get(v, 0)!=0]
-        G_new[node] = {'neighbors':neighbors}        
-    return G_new
-    
-    
-def random_walk(G, size, seeds=20, start_node=None,  metropolized=True, **args):
-    #TODO: disconnectednss can be a problem here, visualise the generate graph to fine tune algo
-       
-    if start_node==None:
-        start_node = np.random.choice(list(G.keys()), seeds)
-        
-    v = start_node
-    flag = True
-    selected = {}
-    
-    while flag:
-        for i in range(seeds):
-            if metropolized:    # Metropolis Hastings Random Walk (with the uniform target node distribution) 
-                candidate = np.random.choice(G[v[i]]['neighbors'])
-                #v[i] = candidate if (np.random.rand() < len(G[v[i]]['neighbors'])/len(G[candidate]['neighbors'])) \
-                v[i] = candidate if (np.random.rand() < len(G[candidate]['neighbors']))/len(G[v[i]]['neighbors']) \
-                                 else v[i] 
-            else:               # classic Random Walk
-                v[i] = np.random.choice(G[v[i]]['neighbors'])
-                
-            if selected.get(v[i], 0) == 0:
-                selected[v[i]] = 1
-                size -= 1
-                if size == 0:
-                    flag = False
-                    break   
+    def next_batch(self):
+        data = []
+        for idx in range(self.batch_size):
+            c = self.shuffled[self.counter]                     #get next value in the shuffled list
+            g = self.sampling(self.graph_set[c], self.median)   #sample the graph to a fixed vertex size graph
             
-    return selected.keys()
+            #one-hot encoding
+            truth = np.zeros(self.classes)
+            truth[self.labels[c]] = 1
+            
+            self.counter += 1
+            if self.counter == int(self.ratio*self.len): 
+                self.counter = 0
+                print("Finished iterating over entire dataset, starting again...")
+                
+            data.append((g,truth))
+        return data
+                
+    def get_test(self):
+        data = []
+        for idx in range(int(self.ratio*self.len), self.len):
+            g = self.sampling(self.graph_set[idx], self.median) 
+            truth = np.zeros(self.classes)
+            truth[self.labels[c]] = 1       #one-hot encoding
+            data.append((g,truth))
+        return data
     
+    def sampling(self, G, size, **args): 
+        """
+        Returns a sampled graph from 'G' with no. of vertices = 'size'       
+        """
+        node_count = len(G.keys())
+            
+        if size > node_count:
+            #add dummy nodes if graph has less nodes than required
+            for i in range(node_count, size):
+                G[i] = {'neighbors':[]}
+        
+        elif size <  node_count:    
+            #sample using random walk if graph has more nodes than required
+            selected = random_walk(G, size, args)
+            G = self.subgraph(G, selected)
+            
+        #assign initial values to each node
+        # a) default, 1
+        # b) based on label of vertices?
+        # c) normalised degree?
+        for v in G.keys():
+            G[v]['val'] = [1] #default
+            
+        return G
+    
+    
+    def subgraph(self, G, selected):
+        """
+        Generate an induced sub graph of G  
+        using all nodes from list of 'selected' vertices
+        """
+        G_new = {}
+        for node, _ in selected:
+            neighbors = [v for v in G[node]['neighbors'] if selected.get(v, 0)!=0]
+            G_new[node] = {'neighbors':neighbors}        
+        return G_new
+    
+    
+    def random_walk(self, G, size, seeds=20, start_node=None,  metropolized=True, **args):
+        #TODO: disconnectednss can be a problem here, visualise the generate graph to fine tune algo
+           
+        if start_node==None:
+            start_node = np.random.choice(list(G.keys()), seeds)
+            
+        v = start_node
+        flag = True
+        selected = {} #book-keeping of selected vertices
+        
+        while flag:
+            for i in range(seeds):
+                if metropolized:    # Metropolis Hastings Random Walk (with the uniform target node distribution) 
+                    candidate = np.random.choice(G[v[i]]['neighbors'])
+                    #v[i] = candidate if (np.random.rand() < len(G[v[i]]['neighbors'])/len(G[candidate]['neighbors'])) \
+                    v[i] = candidate if (np.random.rand() < len(G[candidate]['neighbors']))/len(G[v[i]]['neighbors']) \
+                                     else v[i] 
+                else:               # classic Random Walk
+                    v[i] = np.random.choice(G[v[i]]['neighbors'])
+                    
+                if selected.get(v[i], 0) == 0:
+                    selected[v[i]] = 1
+                    size -= 1
+                    if size == 0:
+                        flag = False
+                        break   
+                
+        return selected.keys()
+        
+    def create_adj_list(self,graph):
+        print("Started creating adj_list...")
+        adj_list = {}
+        for k, v in graph.items():
+            adj_list[k] = v['neighbors']
+            
+        print("Done")
+        return adj_list
+
+
+
+#######################################
+#for random debugging and visualisation    
     
 def most_important(G):
-     """ returns a copy of G with
+     """ 
+     returns a copy of G with
      the most important nodes
-     according to the pagerank """ 
+     according to the pagerank
+     """ 
      ranking = nx.betweenness_centrality(G).items()
      print("Calculated ranks...")
      r = [x[1] for x in ranking]
@@ -132,14 +189,14 @@ def most_important(G):
      return Gt
 
    
-def disp(G, sd = 10, sz=512, m=True):
+def disp(G, obj, **args):
     s = time.time()
-    G_nx = nx.Graph(create_adj_list(G))
+    G_nx = nx.Graph(obj.create_adj_list(G))
     e = time.time()    
     print("Calculated adj_list in:" , (e-s))
     #G = nx.Graph(G)
     #G = most_important(G) 
-    Gr = random_walk(G, seeds =sd, size = sz, metropolized = m )    
+    Gr = obj.random_walk(G, args)    
     print("Calculated important in:" , (time.time()-e))
     
     e = time.time()
@@ -231,21 +288,16 @@ def forceatlas2_layout(G, iterations=2, linlog=True, pos=None, nohubs=True,
     return dict(zip(G, pos))
 
 
-graph_set = []    
-for d in dataset:
-    ds = path+d
-    print ("Reading dataset ", ds)
-    graph_set, labels = load_data(ds)
-    if d == 'proteins.graph':
-        labels = labels[0]
-    print ("Dataset: %s length: %s label distribution: %s"%(ds, len(graph_set), Counter(labels)))
-    node_count = []
-    for gidx, graph in graph_set.items():
-        node_count.append(len(graph))
-    print ("Avg #nodes: %s Median #nodes: %s Max #nodes: %s Min #nodes: %s"%(np.mean(node_count), np.median(node_count), max(node_count), min(node_count)))
-
-
-for i in range( len(graph_set.keys())):
-    if i%500 != 0:
-        del graph_set[i]
+graphs = [] 
+d = None
+def main():
+    global graphs, d
+    d = Data(path+'/'+dataset[0])    
+    for i in range( len(d.graph_set.keys())):
+        if i%500 != 0:
+            del d.graph_set[i]
+    graphs = d.graph_set
     
+if '__name__' == '__main__':
+    main()
+        
