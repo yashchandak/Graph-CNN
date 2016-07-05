@@ -36,24 +36,34 @@ def update(net, batch_size):
     for layer in net:
         if not isinstance(layer, g_pool): layer.update()
     
-
-def cross_entropy(pred, truth):
-    print("TODO")    
+def calc_error(pred, truth, fn='log_likelihood', derivative=True):
+    #TODO: generic error function
+    if derivative:
+        if fn == 'log_likelihood':
+            #hard coded for softmax activation
+            #truth is ONE-HOT VECTOR
+            #error = pred[k] - 1
+            return np.dot(pred,truth) - 1
+        elif fn == 'cross_entropy':
+            return 
+        elif fn == 'MSE':
+            return 
+        else:
+            raise ValueError("Invalid loss function...")            
+    else:
+        if fn == 'log_likelihood':
+            return
+        elif fn == 'cross_entropy':
+            return 
+        elif fn == 'MSE':
+            return 
+        else:
+            raise ValueError("Invalid loss function...")
     
-def MSE(pred, truth):
-    print("TODO")
-    
-def train_step(net, data, fn='cross_entropy'):
+def train_step(net, data, **args):
     inp, truth = data[0], data[1]
     out = fwd_pass(net, inp)
-    
-    if fn == 'cross_entropy':
-        error = cross_entropy(out, truth)
-    elif fn == 'MSE':
-        error = MSE(out, truth)
-    else:
-        raise ValueError("Invalid loss function...")
-        
+    error = calc_error(out, truth, **args)        
     backprop(net, error) 
     return np.sum(np.abs(error))
 

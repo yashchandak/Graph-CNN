@@ -11,13 +11,10 @@ TODO
 """
 from __future__ import print_function 
 import numpy as np
-import networkx as nx
-from heapq import nlargest
 
 from layers import g_cnn, fc_nn, g_pool
 from data import Data
-from net import fwd_pass, train_step, update, save, load
-
+from net import fwd_pass, train_step, update, save, load, calc_error
 
 def train(save_path = '', load_path = False):
     db_path = '/home/yash/Project/dataset/GraphSimilarity/reddit_multi_5K.graph'
@@ -55,29 +52,10 @@ def train(save_path = '', load_path = False):
         if i % checkpoint == 0:
             data_batch = db.get_test()
             for d in data_batch:
-                e = fwd_pass(net, db.get_test())
-                valid_error[i//checkpoint] = np.sum(np.abs(e))
+                pred = fwd_pass(net, d[0])
+                valid_error[i//checkpoint] += -calc_error(pred, d[1])
             valid_error[i//checkpoint] /= len(data_batch)    
             save(net, save_path)
             
 
-train(save_path = '/home/yash/Project/Graph-CNN/logs/run1.net')
-
-
-
-
-
-
-
-#       METHOD WITHOUT ADJ MATRIX COMPUTATON
-#       TODO: DOESNT TAKE INTO ACCOUNT ALL PRV CONVOLUTION LAYER
-#        for node in G.keys():
-#            self.temp.fill(0)
-#            adj[i] = [node]
-#            for i in range(self.size):
-#                if i : adj = list(set([n  for item in adj   for n in G[item]['neighbors'] ])    #neighbors at level i from the node
-#                self.temp[i] += sum([G[item]['val'] for item in adj])                           #sum of neighbor's values
-#                
-#            G[node][self.name] = np.sum(self.temp * self.filter, axis = 1)
-                
-    
+train(save_path = '/home/yash/Project/Graph-CNN/logs/run1.net') 

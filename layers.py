@@ -307,6 +307,7 @@ class fc_nn(object):
         
     def forward(self, inp):
         #TODO:assert input dimensions
+        #add option for bayesian with dropouts for predicting confidence of results
         self.inp = inp
         
         if self.dropout != 1:
