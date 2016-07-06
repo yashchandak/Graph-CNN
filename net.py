@@ -13,7 +13,7 @@ def fwd_pass(net, inp):
     for layer in net:
         if isinstance(layer, g_pool):
             inp = layer.downsample(inp)
-        elif isinstance(layer, [g_cnn, fc_nn]):
+        elif isinstance(layer, (g_cnn, fc_nn)):
             inp = layer.forward(inp)
         else:
             raise ValueError("Invalid layer type...")
@@ -26,7 +26,7 @@ def backprop(net, err):
     for layer in reversed(net):
         if isinstance(layer, g_pool):
             err = layer.upsample(err)
-        elif isinstance(layer, [g_cnn, fc_nn]):
+        elif isinstance(layer, (g_cnn, fc_nn)):
             err = layer.backprop(err)
     
     return err #returns err at the initial input state, which is useless
@@ -43,7 +43,7 @@ def calc_error(pred, truth, fn='log_likelihood', derivative=True):
             #hard coded for softmax activation
             #truth is ONE-HOT VECTOR
             #error = pred[k] - 1
-            return np.dot(pred,truth) - 1
+            return pred*truth - truth
         elif fn == 'cross_entropy':
             return 
         elif fn == 'MSE':

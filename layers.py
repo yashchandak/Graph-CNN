@@ -7,6 +7,7 @@ Created on Sun Jul  3 01:19:38 2016
 TODO:
 [1] : add L2 regularisation
 [2] : in g_pool flattening, make centrality independent of nx
+[3]*: Pre allocate memory for adj matrices and adj_list
 """
 from __future__ import print_function 
 import numpy as np
@@ -24,7 +25,7 @@ class activation(object):
         #clip the outputs, since size of receptive field can vary a lot
         ##RelU/Sigmoid/Softmax
         if self.fn == 'ReLu':
-            return np.array([max(0.01, item) for item in inp])
+            return np.clip([max(0.01, item) for item in inp], -5, 5)
             
         elif self.fn == 'Sigmoid':
             return 1/(1+e**-inp)
@@ -83,6 +84,9 @@ class g_cnn(object):
         self.eps    = 1e-8
     
     def forward(self, G):
+        print("forward gcnn!!")
+        #TODO: **IMP** many dynamic arrays! pre-allocate them, use dict during run time, something!! 
+        #nnodes is now fixed for each graph via sampling, no need for dynamc arrays!!
         #for each node, uses its 'val' and computes 'conv'
         nnodes = len(G.keys())
         
@@ -98,9 +102,9 @@ class g_cnn(object):
         
         #powers of adj matrix
         #to find no.of paths between i,j of length 'level'
-        adj_mat_pow = np.array([np.identity(nnodes)])        
+        adj_mat_pow = np.array([np.identity(nnodes)]*self.size)        
         for level in range(1,self.size):
-            adj_mat_pow.append(adj_mat_pow[level-1].dot(self.adj_mat))
+            adj_mat_pow[level] = (adj_mat_pow[level-1].dot(self.adj_mat))
         
         #keep path at level(i) only if level(j) == False, for all j < i
         adj_mat_pow = adj_mat_pow.astype(bool)
@@ -113,7 +117,7 @@ class g_cnn(object):
             adj_mat_pow[level] &= np.invert(temp) 
         
         #create adj_list from the adj_matrix
-        self.adj_list = np.zeros(self.size)
+        self.adj_list = [0]*self.size
         for level in range(self.size):
             self.adj_list[level] = [[j  for j in range(nnodes) if adj_mat_pow[level][i][j]] \
                                         for i in range(nnodes)]
@@ -131,18 +135,20 @@ class g_cnn(object):
         #   sum over the axis of both: levels and prv_size
         #   activate the sum added with bias
         #   resulatant  = convolved value for that node for each filter
-        for node in range(self.nnodes):
-            self.temp = [np.sum([G[self.idx_to_node[idx]]['val'] \
+        for node in range(nnodes):
+            self.temp = np.array([np.sum([G[self.idx_to_node[idx]]['val'] \
                                  for idx in self.adj_list[level][node]], \
                                  axis = 0) \
-                        for level in range(self.size)] 
-            
+                        for level in range(self.size)] )
+            print(self.filter.shape, self.temp.shape, self.bias.shape, np.shape(G[self.idx_to_node[0]]['val']))
             G[self.idx_to_node[node]]['conv'] = self.act.activate \
-                                                (np.sum(self.temp * self.filter, axis = (1,2)) + self.bias)
-        
+                                                (np.sum(self.temp * self.filter, axis = (1,2))  + self.bias)
+            #create dummy space to accumulate deltas later
+            G[self.idx_to_node[node]]['delta'] = np.zeros(self.filter_count)
         return G    
 
     def backprop(self, G):
+        print("back gcnn")
         #for each node, use its 'delta' provided by the pooling layer and computes 'error'
         
         for node in G.keys():
@@ -200,12 +206,14 @@ class g_pool(object):
         Upsample the error from the Graph at layer (l+1)
         to the graph at layer (l)        
         """
+        print("upsample ")
         if self.flat:
             G = self.unflatten(G)
             
         for node in G.keys():
             nb = self.G_old[node]['neighbors']
             err = G[node]['error']/len(nb)
+            print(self.G_old[nb[0]]['delta'].shape, err.shape, self.G_new[nb[0]['delta'].shape])
             for n in nb:
                 #sum up fraction of errors as it may have been neighbor to more than one pooled node.
                 self.G_old[n]['delta'] += err
@@ -219,6 +227,7 @@ class g_pool(object):
         since resultant of that can't be stacked up because
         of differnet structures that might arise from pooling each conv filter separately
         """
+        print("downsample")
         self.G_old = G
         ##[Method 1] Simplest way
         self.keep_count = len(G.keys())//self.ratio
@@ -231,9 +240,9 @@ class g_pool(object):
             #new neighbors = only prv neighbors who passed pooling step
             G_new[node]['neighbors'] = [n for n in G[node]['neighbors'] if n in nodes] #list(set(G[node]['neighbors']) & set(nodes))
             #val = mean of its neighbor's and itself's values            
-            G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']].append(G[node]['conv']), axis=0)
+            G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']], axis=0)
             #create dummy space to accumulate deltas later
-            G_new[node]['delta'] = np.zeros(self.val_len)
+            #G_new[node]['delta'] = np.zeros(self.val_len)
             
         if self.flat:
             return self.flatten(G_new)
@@ -265,7 +274,7 @@ class g_pool(object):
         vec = [G[node[0]]['val'] for node in self.ranking]
         return np.reshape(vec, -1)
         
-    def un_flatten(self, vec):
+    def unflatten(self, vec):
         """
         convert the linear error vector coming from 
         fully connected nets into graph structure
@@ -308,21 +317,24 @@ class fc_nn(object):
     def forward(self, inp):
         #TODO:assert input dimensions
         #add option for bayesian with dropouts for predicting confidence of results
+        print("forward FCNN")
         self.inp = inp
         
         if self.dropout != 1:
             mask = (np.random.rand(self.inp.shape) < self.dropout) / self.dropout 
             self.inp *= mask 
-            
-        self.out = self.act.activate(self.synapse.dot(self.inp) + self.bias) 
+         
+        self.out = self.act.activate(self.synapses.dot(self.inp) + self.bias) 
         return self.out
     
     def backprop(self, error):
         ##
+        print("backprop FCNN")
         self.error = self.act.derivative(self.out)*error
-        self.synapse_del += self.error.reshape(self.nodes,1)*self.inp
-        return self.synapse.T.dot(self.error)
-        #return self.act.derivative(self.inp)*self.synapse.T.dot(error)
+        #print(self.error.shape, error.shape, self.inp.shape)
+        self.synapses_del += self.error.reshape(self.nodes,1)*self.inp
+        return self.synapses.T.dot(self.error)
+        #return self.act.derivative(self.inp)*self.synapses.T.dot(error)
         
     def update(self, batch_size):
         #ADAM update

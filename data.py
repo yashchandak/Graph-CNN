@@ -30,15 +30,19 @@ class Data(object):
     has_more = True
     counter = 0
     val_size = 1 #size of the value assigned to each node initially
-    def __init__(self, path, ratio = 0.9, batch_Size = 1):
-        self.read_data(path)
+    def __init__(self, path, ratio = 0.9, batch_size = 1):
         self.batch_size = batch_size
         self.ratio = ratio
         
+        self.read_data(path)
+        
     def read_data(self, path):
         print ("Reading dataset ", path)
-        self.graph_set, self.labels = self.load_data(ds)
-        if d.split('/')[-1] == 'proteins.graph': #exception case
+        self.graph_set, self.labels = self.load_data(path)
+        #remove this
+        for i in range(10,len(self.graph_set.keys())): del self.graph_set[i]
+            
+        if path.split('/')[-1] == 'proteins.graph': #exception case
             self.labels = self.labels[0]
         
         node_count = []
@@ -63,7 +67,7 @@ class Data(object):
         data = pickle.load(f, encoding='latin1')
         graph_data = data["graph"]
         labels = data["labels"]
-        labels  = np.array(labels, dtype = np.float)
+        labels  = np.array(labels, dtype = np.int)
         return graph_data, labels
 
     def next_batch(self):
@@ -88,13 +92,13 @@ class Data(object):
     def get_test(self):
         data = []
         for idx in range(int(self.ratio*self.len), self.len):
-            g = self.sampling(self.graph_set[idx], self.median) 
+            g = self.sampling(self.graph_set[idx], self.size) 
             truth = np.zeros(self.classes)
             truth[self.labels[c]] = 1       #one-hot encoding
             data.append((g,truth))
         return data
     
-    def sampling(self, G, size, **args): 
+    def sampling(self, G, size): 
         """
         Returns a sampled graph from 'G' with no. of vertices = 'size'       
         """
@@ -107,7 +111,7 @@ class Data(object):
         
         elif size <  node_count:    
             #sample using random walk if graph has more nodes than required
-            selected = random_walk(G, size, args)
+            selected = self.random_walk(G, size)
             G = self.subgraph(G, selected)
             
         #assign initial values to each node
@@ -127,15 +131,14 @@ class Data(object):
         using all nodes from list of 'selected' vertices
         """
         G_new = {}
-        for node, _ in selected:
+        for node in selected:
             neighbors = [v for v in G[node]['neighbors'] if selected.get(v, 0)!=0]
             G_new[node] = {'neighbors':neighbors}        
         return G_new
     
     
-    def random_walk(self, G, size, seeds=20, start_node=None,  metropolized=True, **args):
+    def random_walk(self, G, size, seeds=20, start_node=None,  metropolized=True):
         #TODO: disconnectednss can be a problem here, visualise the generate graph to fine tune algo
-           
         if start_node==None:
             start_node = np.random.choice(list(G.keys()), seeds)
             
@@ -160,7 +163,7 @@ class Data(object):
                         flag = False
                         break   
                 
-        return selected.keys()
+        return selected
         
     def create_adj_list(self,graph):
         print("Started creating adj_list...")
@@ -291,6 +294,8 @@ def forceatlas2_layout(G, iterations=2, linlog=True, pos=None, nohubs=True,
         # Return the layout
     return dict(zip(G, pos))
 
+db_path = '/home/yash/Project/dataset/GraphSimilarity/reddit_multi_5K.graph'
+db = Data(db_path)
 
 graphs = [] 
 d = None
@@ -302,6 +307,6 @@ def main():
             del d.graph_set[i]
     graphs = d.graph_set
     
-if '__name__' == '__main__':
-    main()
+#if '__name__' == '__main__':
+#    main()
         

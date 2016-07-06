@@ -13,23 +13,27 @@ from __future__ import print_function
 import numpy as np
 
 from layers import g_cnn, fc_nn, g_pool
-from data import Data
+#from data import Data
+#import data
 from net import fwd_pass, train_step, update, save, load, calc_error
 
+db = data.db
+
 def train(save_path = '', load_path = False):
-    db_path = '/home/yash/Project/dataset/GraphSimilarity/reddit_multi_5K.graph'
-    db = Data(db_path)
+#    db_path = '/home/yash/Project/dataset/GraphSimilarity/reddit_multi_5K.graph'
+#    db = Data(db_path)
     class_count = db.classes
-    inp_size    = db.val_size
+    val_size    = db.val_size
+    inp_size    = db.size
     
     if load_path:
         net = load(load_path)
     else:
-        net = [g_cnn(prv_count = inp_size, filter_count = 4), g_pool(), \
+        net = [g_cnn(prv_count = val_size, filter_count = 4), g_pool(), \
                g_cnn(prv_count = 4,        filter_count = 8), g_pool(flat=True), \
                fc_nn(prv = ((inp_size//2)//2)*8, nodes = 512), \
                fc_nn(prv = 512, nodes = 256, dropout = True), \
-               fc_nn(prv = 256, nodes = class_count, fn="softmax") ]
+               fc_nn(prv = 256, nodes = class_count, fn="Softmax") ]
           
     epoch = 100
     checkpoint = 5
