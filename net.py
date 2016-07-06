@@ -34,7 +34,7 @@ def backprop(net, err):
 def update(net, batch_size):
     #update the net parameters
     for layer in net:
-        if not isinstance(layer, g_pool): layer.update()
+        if not isinstance(layer, g_pool): layer.update(batch_size)
     
 def calc_error(pred, truth, fn='log_likelihood', derivative=True):
     #TODO: generic error function
@@ -63,9 +63,10 @@ def calc_error(pred, truth, fn='log_likelihood', derivative=True):
 def train_step(net, data, **args):
     inp, truth = data[0], data[1]
     out = fwd_pass(net, inp)
-    error = calc_error(out, truth, **args)        
+    error = calc_error(out, truth, **args)     
+    print(truth, out)
     backprop(net, error) 
-    return np.sum(np.abs(error))
+    return error
 
 def save(net, name):
     pickle.dump(net, open(name, "wb"))

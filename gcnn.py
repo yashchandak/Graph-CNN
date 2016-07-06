@@ -14,7 +14,7 @@ import numpy as np
 
 from layers import g_cnn, fc_nn, g_pool
 #from data import Data
-#import data
+import data
 from net import fwd_pass, train_step, update, save, load, calc_error
 
 db = data.db
@@ -31,35 +31,41 @@ def train(save_path = '', load_path = False):
     else:
         net = [g_cnn(prv_count = val_size, filter_count = 4), g_pool(), \
                g_cnn(prv_count = 4,        filter_count = 8), g_pool(flat=True), \
-               fc_nn(prv = ((inp_size//2)//2)*8, nodes = 512), \
-               fc_nn(prv = 512, nodes = 256, dropout = True), \
+               fc_nn(prv = ((inp_size//2)//2)*8, nodes = 1024), \
+               fc_nn(prv = 1024, nodes = 256, dropout = True), \
                fc_nn(prv = 256, nodes = class_count, fn="Softmax") ]
           
-    epoch = 100
-    checkpoint = 5
+    epoch = 25
+    checkpoint = 10
     batch_size = 1
-    train_error = np.zeros(epoch)
-    valid_error = np.zeros(epoch//checkpoint)
-    
+    train_error = np.zeros(epoch*5000//batch_size, np.float)
+    valid_error = np.zeros(epoch)
+    ctr = 0
     for i in range(epoch):
         while(db.has_more):
             
             data_batch = db.next_batch()
             for d in data_batch:
                 e = train_step(net, d)
-                train_error[i] += np.sum(np.abs(e))     
+                #print(e)
+                train_error[ctr] += np.sum(np.abs(e))     
             
-            train_error[i] /= batch_size
+            #train_error[ctr] /= batch_size
             update(net, batch_size)
             
+            ctr += 1
+            if ctr%checkpoint == 0:
+                print("Batch [%d]: Training Error: [%f]" %(ctr, train_error[ctr]))
+        
         db.has_more = True
-        if i % checkpoint == 0:
-            data_batch = db.get_test()
-            for d in data_batch:
-                pred = fwd_pass(net, d[0])
-                valid_error[i//checkpoint] += -calc_error(pred, d[1])
-            valid_error[i//checkpoint] /= len(data_batch)    
-            save(net, save_path)
+        data_batch = db.get_test()
+        for d in data_batch:
+            pred = fwd_pass(net, d[0])
+            valid_error[i] += -np.sum(calc_error(pred, d[1]))
+        valid_error[i] /= len(data_batch)    
+        
+        save(net, save_path)
+        print("Epoch [%d]> Validation Error: [%f]" %(i, valid_error[i]))
             
 
 train(save_path = '/home/yash/Project/Graph-CNN/logs/run1.net') 

@@ -66,13 +66,13 @@ class g_cnn(object):
         self.stride         = stride  #not used, for time being
         self.filter_count   = filter_count
         self.size           = size
-        self.filter         = np.random.randn(filter_count, size, prv_count)*np.sqrt(2/50)  #TODO instead of 50 put fan-in     
+        self.filter         = np.random.randn(filter_count, size, prv_count)*np.sqrt(1/10000)  #TODO instead of 50 put fan-in     
         self.filter_del     = np.zeros(self.filter.shape)        
-        self.bias           = np.random.randn(filter_count)  
+        self.bias           = np.random.randn(filter_count)*0.0001  
         self.bias_del       = np.zeros(self.bias.shape)
         self.temp           = np.zeros(size)
         self.act            = activation(fn)
-        
+        self.prv_count      = prv_count
         #Adam weight update variables
         self.m      = 0
         self.v      = 0
@@ -80,11 +80,11 @@ class g_cnn(object):
         self.beta1t = 1
         self.beta2  = 0.999
         self.beta2t = 1
-        self.alpha  = 0.001
+        self.alpha  = 0.00001
         self.eps    = 1e-8
     
     def forward(self, G):
-        print("forward gcnn!!")
+        #print("forward gcnn!!")
         #TODO: **IMP** many dynamic arrays! pre-allocate them, use dict during run time, something!! 
         #nnodes is now fixed for each graph via sampling, no need for dynamc arrays!!
         #for each node, uses its 'val' and computes 'conv'
@@ -123,10 +123,12 @@ class g_cnn(object):
                                         for i in range(nnodes)]
                                             
         #for each node:
+        #  if neighbors exists:
         #   for neighbors at each level of the node:
         #       find the values of neighbor
         #       these values are vectors of dim prv_size, corresponding to each prv filter
         #       sum over the values corresponding to same prv filter
+        #  else: return [0]*prv_size                                
         #
         #   resultant is temp[level][prv_size]
         #   filter has 3 dim, [filter_no][level][prv_size]
@@ -137,10 +139,11 @@ class g_cnn(object):
         #   resulatant  = convolved value for that node for each filter
         for node in range(nnodes):
             self.temp = np.array([np.sum([G[self.idx_to_node[idx]]['val'] \
-                                 for idx in self.adj_list[level][node]], \
-                                 axis = 0) \
+                                         for idx in self.adj_list[level][node]], axis = 0) \
+                                 if len(self.adj_list[level][node]) !=0 \
+                                 else np.zeros(self.prv_count) \
                         for level in range(self.size)] )
-            print(self.filter.shape, self.temp.shape, self.bias.shape, np.shape(G[self.idx_to_node[0]]['val']))
+            #print(self.filter.shape, self.temp.shape, self.bias.shape, np.shape(G[self.idx_to_node[0]]['val']))
             G[self.idx_to_node[node]]['conv'] = self.act.activate \
                                                 (np.sum(self.temp * self.filter, axis = (1,2))  + self.bias)
             #create dummy space to accumulate deltas later
@@ -148,7 +151,7 @@ class g_cnn(object):
         return G    
 
     def backprop(self, G):
-        print("back gcnn")
+        #print("back gcnn")
         #for each node, use its 'delta' provided by the pooling layer and computes 'error'
         
         for node in G.keys():
@@ -160,17 +163,19 @@ class g_cnn(object):
         #instead of 'conv' we use 'error' to store the corresponding errors for the nodes
         nnodes = len(G.keys())
         for node in range(nnodes):
-            self.temp = [np.sum([G[self.idx_to_node[idx]]['delta'] \
-                                 for idx in self.adj_list[level][node]], \
-                                 axis = 0) \
-                        for level in range(self.size)] 
+            self.temp = np.array([np.sum([G[self.idx_to_node[idx]]['delta'] \
+                                         for idx in self.adj_list[level][node]], axis = 0) \
+                                 if len( self.adj_list[level][node]) !=0 \
+                                 else np.zeros(self.filter_count) \
+                        for level in range(self.size)] )
             
             #transpose the filter to go back to dimension of 'prv_count'
             #calculate actual error for the nodes 
-            G[self.idx_to_node[node]]['error'] = np.sum(self.temp * self.filter.T, axis = (1,2))  
+            #print(self.filter.T.shape, self.temp.shape)
+            G[self.idx_to_node[node]]['error'] = np.sum(self.filter.T*self.temp , axis = (1,2))  
             
             #calculate deltas for filter
-            self.filter_del += G[self.idx_to_node[node]]['val']*self.temp
+            self.filter_del += self.temp.reshape(self.filter_count, self.size,  1)*G[self.idx_to_node[node]]['val']
             
         self.bias_del = np.sum([G[node]['delta'] for node in G.keys()], axis = 0)
         
@@ -206,18 +211,17 @@ class g_pool(object):
         Upsample the error from the Graph at layer (l+1)
         to the graph at layer (l)        
         """
-        print("upsample ")
+        #print("upsample ")
         if self.flat:
             G = self.unflatten(G)
             
         for node in G.keys():
             nb = self.G_old[node]['neighbors']
-            err = G[node]['error']/len(nb)
-            print(self.G_old[nb[0]]['delta'].shape, err.shape, self.G_new[nb[0]['delta'].shape])
+            err = G[node]['error']/(len(nb)+1)
+            #print(self.G_old[nb[0]]['delta'].shape, err.shape, self.G_new[nb[0]['delta'].shape])
             for n in nb:
-                #sum up fraction of errors as it may have been neighbor to more than one pooled node.
-                self.G_old[n]['delta'] += err
-                
+                self.G_old[n]['delta'] += err   #sum up fraction of errors as it may have been neighbor to more than one pooled node.
+            self.G_old[node]['delta'] += err    #error contribution of the node itself
         return self.G_old
         
     def downsample(self, G):
@@ -227,7 +231,7 @@ class g_pool(object):
         since resultant of that can't be stacked up because
         of differnet structures that might arise from pooling each conv filter separately
         """
-        print("downsample")
+        #print("downsample")
         self.G_old = G
         ##[Method 1] Simplest way
         self.keep_count = len(G.keys())//self.ratio
@@ -240,9 +244,7 @@ class g_pool(object):
             #new neighbors = only prv neighbors who passed pooling step
             G_new[node]['neighbors'] = [n for n in G[node]['neighbors'] if n in nodes] #list(set(G[node]['neighbors']) & set(nodes))
             #val = mean of its neighbor's and itself's values            
-            G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']], axis=0)
-            #create dummy space to accumulate deltas later
-            #G_new[node]['delta'] = np.zeros(self.val_len)
+            G_new[node]['val'] = np.mean([G[n]['conv'] for n in G[node]['neighbors']] + [G[node]['conv']], axis=0)
             
         if self.flat:
             return self.flatten(G_new)
@@ -272,7 +274,10 @@ class g_pool(object):
         
         #concatenate all the filter values of nodes in order of their ranking
         vec = [G[node[0]]['val'] for node in self.ranking]
-        return np.reshape(vec, -1)
+        vec = np.reshape(vec, -1)
+        if len(vec) == 504:
+            print(len(G.keys()), self.ranking)
+        return vec
         
     def unflatten(self, vec):
         """
@@ -300,7 +305,7 @@ class fc_nn(object):
         self.dropout  = dropout
         self.synapses = np.random.randn(nodes, prv)*(2.0/np.sqrt(prv)) 
         self.synapses_del = np.zeros(self.synapses.shape)
-        self.bias     = np.random.random((nodes))*0.1 
+        self.bias     = np.random.random((nodes))*0.01 
         self.bias_del = np.zeros(self.bias.shape)
         self.act      = activation(fn)
         
@@ -311,25 +316,25 @@ class fc_nn(object):
         self.beta1t = 1
         self.beta2  = 0.999
         self.beta2t = 1
-        self.alpha  = 0.001
+        self.alpha  = 0.0001
         self.eps    = 1e-8    
         
     def forward(self, inp):
         #TODO:assert input dimensions
         #add option for bayesian with dropouts for predicting confidence of results
-        print("forward FCNN")
+        #print("forward FCNN")
         self.inp = inp
         
         if self.dropout != 1:
             mask = (np.random.rand(self.inp.shape) < self.dropout) / self.dropout 
             self.inp *= mask 
-         
+        #print(self.synapses.shape, self.inp.shape, self.bias.shape) 
         self.out = self.act.activate(self.synapses.dot(self.inp) + self.bias) 
         return self.out
     
     def backprop(self, error):
         ##
-        print("backprop FCNN")
+        #print("backprop FCNN")
         self.error = self.act.derivative(self.out)*error
         #print(self.error.shape, error.shape, self.inp.shape)
         self.synapses_del += self.error.reshape(self.nodes,1)*self.inp

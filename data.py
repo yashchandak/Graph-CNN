@@ -40,7 +40,7 @@ class Data(object):
         print ("Reading dataset ", path)
         self.graph_set, self.labels = self.load_data(path)
         #remove this
-        for i in range(10,len(self.graph_set.keys())): del self.graph_set[i]
+        #for i in range(10,len(self.graph_set.keys())): del self.graph_set[i]
             
         if path.split('/')[-1] == 'proteins.graph': #exception case
             self.labels = self.labels[0]
@@ -78,7 +78,7 @@ class Data(object):
             
             #one-hot encoding
             truth = np.zeros(self.classes)
-            truth[self.labels[c]] = 1
+            truth[self.labels[c]-1] = 1
             
             self.counter += 1
             if self.counter == int(self.ratio*self.len): 
@@ -94,7 +94,7 @@ class Data(object):
         for idx in range(int(self.ratio*self.len), self.len):
             g = self.sampling(self.graph_set[idx], self.size) 
             truth = np.zeros(self.classes)
-            truth[self.labels[c]] = 1       #one-hot encoding
+            truth[self.labels[idx]] = 1       #one-hot encoding
             data.append((g,truth))
         return data
     
@@ -120,7 +120,7 @@ class Data(object):
         # c) normalised degree?
         #change self.val_size accodingly
         for v in G.keys():
-            G[v]['val'] = [1] #default
+            G[v]['val'] = np.array([1]) #default
             
         return G
     
@@ -145,9 +145,10 @@ class Data(object):
         v = start_node
         flag = True
         selected = {} #book-keeping of selected vertices
-        
+        ctr = 0
         while flag:
             for i in range(seeds):
+                ctr += 1
                 if metropolized:    # Metropolis Hastings Random Walk (with the uniform target node distribution) 
                     candidate = np.random.choice(G[v[i]]['neighbors'])
                     #v[i] = candidate if (np.random.rand() < len(G[v[i]]['neighbors'])/len(G[candidate]['neighbors'])) \
@@ -161,7 +162,12 @@ class Data(object):
                     size -= 1
                     if size == 0:
                         flag = False
-                        break   
+                        break  
+           
+            if ctr % 10000 == 0:
+                print("Stuck at random walk!.. resetting seeds")
+                v =  np.random.choice(list(G.keys()), seeds)
+                ctr = 0
                 
         return selected
         
